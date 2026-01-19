@@ -21,8 +21,13 @@ app.use((req, res, next) => {
 });
 
 const server = http.createServer(app);
-const io = socketio(server);
-
+const io = socketio(server, {
+    maxHttpBufferSize: 1e8, // 100 MB (Removes the 1MB default limit)
+    pingTimeout: 60000,     // 60 seconds (Prevents disconnect during slow uploads)
+    cors: {
+        origin: "*",        // Allow connections from anywhere (optional, good for dev)
+    }
+});
 // Middleware
 app.use(express.json({ limit: '100mb' }));
 app.use(cookieParser());
