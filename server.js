@@ -14,7 +14,7 @@ const authRoutes = require('./routes/authRoutes');
 const viewRoutes = require('./routes/viewRoutes');
 
 const app = express();
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true ,limit: '50mb'}));
 app.use((req, res, next) => {
     console.log(`📢 Request received: ${req.method} ${req.url}`);
     next();
@@ -24,7 +24,7 @@ const server = http.createServer(app);
 const io = socketio(server);
 
 // Middleware
-app.use(express.json());
+app.use(express.json({ limit: '100mb' }));
 app.use(cookieParser());
 app.use(express.static('public'));
 app.set('view engine', 'ejs');
@@ -100,6 +100,9 @@ const rawMessages = await Message.find().sort({ createdAt: 1 });
             // Old Format: Just a string
             msgText = String(data);
             msgType = 'text';
+        }
+        if (msgType === 'text' && (!msgText || msgText.trim().length === 0)) {
+            return;
         }
 
         // ⚠️ SAFETY CHECK: Ensure we are encrypting a string
