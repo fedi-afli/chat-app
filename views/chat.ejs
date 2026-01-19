@@ -56,6 +56,20 @@
         // Join chatroom
         socket.emit('joinRoom', { username: currentUsername });
 
+        // 👇👇👇 NEW PART: Listen for old messages 👇👇👇
+        socket.on('loadMessages', (history) => {
+            history.forEach(msg => {
+                outputMessage({
+                    username: msg.username,
+                    text: msg.text, // Text is already decrypted by the server
+                    type: 'chat'
+                });
+            });
+            // Scroll to the bottom immediately after loading
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        });
+        // 👆👆👆 END NEW PART 👆👆👆
+
         // Get room users
         socket.on('roomUsers', ({ users }) => {
             outputUsers(users);
@@ -64,7 +78,6 @@
         // Message from server
         socket.on('message', (message) => {
             outputMessage(message);
-            // Scroll down
             chatMessages.scrollTop = chatMessages.scrollHeight;
         });
 

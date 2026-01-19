@@ -5,6 +5,8 @@ const socketio = require('socket.io');
 const http = require('http');
 const cookieParser = require('cookie-parser');
 const connectDB = require('./config/db');
+const { encrypt, decrypt } = require('./utils/crypto');
+const Message = require('./models/Message');
 
 // Routes
 const authRoutes = require('./routes/authRoutes');
@@ -40,53 +42,71 @@ const activeUsers = {}; // Map socket.id to username
 io.on('connection', (socket) => {
     console.log('New WebSocket connection');
 
-    // 1. User Joins
-    socket.on('joinRoom', ({ username }) => {
+    socket.on('joinRoom', async ({ username }) => {
         activeUsers[socket.id] = username;
 
-        // Broadcast to others that user joined
+        // 👇 1. LOAD & DECRYPT OLD MESSAGES
+        try {
+            const rawMessages = await Message.find().sort({ createdAt: 1 });
+            
+            // Convert database messages to readable text
+            const history = rawMessages.map(msg => ({
+                username: msg.username,
+                text: decrypt(msg.text), // 🔓 Decrypt here!
+                createdAt: msg.createdAt
+            }));
+
+            socket.emit('loadMessages', history);
+        } catch (err) {
+            console.error("Error loading messages:", err);
+        }
+
+        // Notify others
         socket.broadcast.emit('message', {
             username: 'System',
             text: `${username} has joined the chat`,
             type: 'system'
         });
 
-        // Update user list for everyone
-        io.emit('roomUsers', {
-            users: Object.values(activeUsers)
-        });
+        io.emit('roomUsers', { users: Object.values(activeUsers) });
     });
 
-    // 2. Listen for Chat Messages
-    socket.on('chatMessage', (msg) => {
+    // 👇 2. ENCRYPT & SAVE NEW MESSAGES
+    socket.on('chatMessage', async (msg) => {
         const user = activeUsers[socket.id];
-        // Emit to everyone including sender
-        io.emit('message', {
-            username: user,
-            text: msg,
-            type: 'chat'
-        });
+        
+        try {
+            // 🔒 Encrypt before saving
+            const encryptedText = encrypt(msg);
+            
+            const newMessage = new Message({ 
+                username: user, 
+                text: encryptedText 
+            });
+            await newMessage.save();
+
+            // Emit the PLAIN text to currently connected users
+            // (No need to decrypt because we just received it!)
+            io.emit('message', {
+                username: user,
+                text: msg,
+                type: 'chat'
+            });
+        } catch (err) {
+            console.error("Error saving message:", err);
+        }
     });
 
-    // 3. User Disconnects
+    // Disconnect
     socket.on('disconnect', () => {
         const username = activeUsers[socket.id];
         if (username) {
-            io.emit('message', {
-                username: 'System',
-                text: `${username} has left the chat`,
-                type: 'system'
-            });
-
+            io.emit('message', { username: 'System', text: `${username} has left`, type: 'system' });
             delete activeUsers[socket.id];
-
-            // Update user list
-            io.emit('roomUsers', {
-                users: Object.values(activeUsers)
-            });
+            io.emit('roomUsers', { users: Object.values(activeUsers) });
         }
     });
 });
-Port=process.env.PORT
+Port=process.env.PORT || 3000;
 
 server.listen(Port, () => console.log(`🚀 Server running on port http://localhost:${Port}`));
