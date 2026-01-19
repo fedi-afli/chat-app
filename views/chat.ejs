@@ -29,19 +29,27 @@
             <div id="chat-messages" class="flex-1 p-6 overflow-y-auto space-y-4">
                 </div>
 
-            <div class="bg-white p-4 border-t flex items-center">
-                <form id="chat-form" class="flex w-full gap-2">
-                    <input 
-                        id="msg" 
-                        type="text" 
-                        autocomplete="off" 
-                        placeholder="Type a message..." 
-                        class="flex-1 border p-3 rounded-full focus:outline-none focus:border-indigo-500 bg-gray-50"
-                        required
-                    />
-                    <button class="bg-indigo-600 text-white px-6 py-2 rounded-full hover:bg-indigo-700 transition">Send</button>
-                </form>
-            </div>
+<div class="bg-white p-4 border-t flex items-center">
+    <form id="chat-form" class="flex w-full gap-2 items-center">
+        
+        <input type="file" id="imageInput" accept="image/*" class="hidden">
+        
+        <button type="button" onclick="document.getElementById('imageInput').click()" 
+            class="text-gray-500 hover:text-indigo-600 p-2 transition">
+            📷
+        </button>
+
+        <input 
+            id="msg" 
+            type="text" 
+            autocomplete="off" 
+            placeholder="Type a message..." 
+            class="flex-1 border p-3 rounded-full focus:outline-none focus:border-indigo-500 bg-gray-50"
+            required
+        />
+        <button class="bg-indigo-600 text-white px-6 py-2 rounded-full hover:bg-indigo-700 transition">Send</button>
+    </form>
+</div>
         </main>
     </div>
 
@@ -50,6 +58,39 @@
     const chatForm = document.getElementById('chat-form');
     const chatMessages = document.getElementById('chat-messages');
     const userList = document.getElementById('usersList');
+    const imageInput = document.getElementById('imageInput');
+
+    // 👇 EVENT: When a user selects a file
+    imageInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Convert image to Base64 string
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => {
+            const base64Image = reader.result;
+            
+            // Emit to server
+            socket.emit('chatMessage', { type: 'image', content: base64Image });
+        };
+        
+        // Reset input so you can send the same image again if you want
+        imageInput.value = ''; 
+    });
+
+    // ... (Keep existing chatForm submit listener) ...
+    // BUT: Update the submit listener to send text as an object too
+    chatForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const msg = e.target.elements.msg.value;
+        
+        // 👇 Send as object now
+        socket.emit('chatMessage', { type: 'text', content: msg });
+        
+        e.target.elements.msg.value = '';
+        e.target.elements.msg.focus();
+    });
     
     // 👇 Use 'user.username' and handle 'user.nickname' safely
     const currentUsername = "<%= user.username %>";
@@ -135,6 +176,7 @@
     }
 
     // Output Message to DOM
+  // Output Message to DOM
     function outputMessage(message) {
         const div = document.createElement('div');
         if (message._id) div.id = `msg-${message._id}`; 
@@ -148,14 +190,28 @@
             const seenList = message.seenBy || [];
             const isSeen = seenList.some(u => u !== currentUsername);
 
+            // 1. Check if it is an image (Check both 'messageType' from DB and 'type' from live)
+            const isImage = message.messageType === 'image' || message.type === 'image';
+
             div.classList.add('flex', 'flex-col', isMyMessage ? 'items-end' : 'items-start');
             
+            // 2. Create the content HTML based on type
+            let contentHtml = '';
+            if (isImage) {
+                
+                // Render Image
+                contentHtml = `<img src="${message.text}" class="max-w-[200px] rounded-lg cursor-pointer" onclick="window.open(this.src)" />`;
+            } else {
+                // Render Text
+                contentHtml = `<p>${message.text}</p>`;
+            }
+
             div.innerHTML = `
                 <span class="text-xs text-gray-500 mb-1 ${isMyMessage ? 'mr-1' : 'ml-1'}">
                     ${message.nickname || message.username} 
                 </span>
                 <div class="max-w-md px-4 py-2 rounded-lg shadow-sm ${isMyMessage ? 'bg-blue-500 text-white rounded-br-none' : 'bg-green-500 text-white rounded-bl-none'}">
-                    <p>${message.text}</p>
+                    ${contentHtml} 
                 </div>
                 ${isMyMessage ? 
                     `<span class="text-[10px] text-gray-400 mt-1 seen-status" 

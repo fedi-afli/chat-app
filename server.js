@@ -56,15 +56,15 @@ io.on('connection', (socket) => {
             );
 
             // 2. Load History
-            const rawMessages = await Message.find().sort({ createdAt: 1 });
+const rawMessages = await Message.find().sort({ createdAt: 1 });
             const history = rawMessages.map(msg => ({
                 _id: msg._id,
                 username: msg.username,
                 nickname: msg.nickname || msg.username, 
                 text: decrypt(msg.text),
-                seenBy: msg.seenBy || []
+                seenBy: msg.seenBy || [],
+                messageType: msg.messageType // 👈 ADD THIS LINE!
             }));
-
             socket.emit('loadMessages', history);
             io.emit('messagesSeen', { username });
 
@@ -83,34 +83,59 @@ io.on('connection', (socket) => {
         });
     });
 
-    // 🔵 CHAT MESSAGE
-    socket.on('chatMessage', async (msg) => {
+// 🔵 CHAT MESSAGE (Text & Image)
+    socket.on('chatMessage', async (data) => {
         const currentUser = activeUsers[socket.id];
         if (!currentUser) return; 
 
+        // 1. Handle incoming data (Object vs String)
+        let msgText;
+        let msgType;
+
+        if (typeof data === 'object' && data !== null) {
+            // New Format: { type: '...', content: '...' }
+            msgText = data.content; 
+            msgType = data.type || 'text';
+        } else {
+            // Old Format: Just a string
+            msgText = String(data);
+            msgType = 'text';
+        }
+
+        // ⚠️ SAFETY CHECK: Ensure we are encrypting a string
+        if (typeof msgText !== 'string') {
+            console.log("Ignored invalid message format:", data);
+            return;
+        }
+
         try {
-            const encryptedText = encrypt(msg);
+            // 2. Encrypt content (Now safely a string)
+            const encryptedText = encrypt(msgText);
             
-            // Save to DB
+            // 3. Save to DB
             const newMessage = new Message({ 
                 username: currentUser.username, 
                 nickname: currentUser.nickname, 
                 text: encryptedText,
+                messageType: msgType, 
                 seenBy: [currentUser.username]
             });
             await newMessage.save();
 
-            // Emit to everyone
+            // 4. Emit to everyone
             io.emit('message', {
                 _id: newMessage._id, 
                 username: currentUser.username,
                 nickname: currentUser.nickname, 
-                text: msg,
+                text: msgText, // Send raw content
+                messageType: msgType,
                 type: 'chat',
                 seenBy: [currentUser.username]
             });
 
-        } catch (err) { console.error(err); }
+        } catch (err) { 
+            console.error("Error processing message:", err); 
+        }
     });
 
     // 👇 SEEN EVENT 
