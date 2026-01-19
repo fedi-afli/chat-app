@@ -4,7 +4,8 @@ const bcrypt = require('bcryptjs');
 const { JWT_SECRET } = require('../middleware/authMiddleware');
 
 const createToken = (id, username) => {
-    return jwt.sign({ id, username }, JWT_SECRET, { expiresIn: '1d' });
+    
+    return jwt.sign({ id, username }, process.env.JWT_SECRET, { expiresIn: '1d' });
 };
 
 module.exports.signup_post = async (req, res) => {

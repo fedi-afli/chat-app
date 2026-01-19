@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const socketio = require('socket.io');
@@ -86,6 +87,6 @@ io.on('connection', (socket) => {
         }
     });
 });
+Port=process.env.PORT
 
-const PORT = 3000;
-server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+server.listen(Port, () => console.log(`🚀 Server running on port http://localhost:${Port}`));

@@ -1,11 +1,12 @@
+
 const mongoose = require('mongoose');
 
 
-const MONGO_URI = "mongodb+srv://fediaflii:NSksvh33e59KYCGF@cluster0.yzmjie7.mongodb.net/?appName=Cluster0/chat_app";
 
 const connectDB = async () => {
     try {
-        await mongoose.connect(MONGO_URI);
+        // 👇 Read from the .env file
+        await mongoose.connect(process.env.MONGO_URI, { dbName: 'chatapp' });
         console.log('✅ MongoDB Connected to: chatapp');
     } catch (err) {
         console.error('❌ Database connection error:', err.message);

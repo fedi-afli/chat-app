@@ -1,11 +1,12 @@
 const jwt = require('jsonwebtoken');
-const JWT_SECRET = 'your_super_secret_key_123'; // Use .env in production
 
+// 👇 Read from .env
 const requireAuth = (req, res, next) => {
     const token = req.cookies.jwt;
 
     if (token) {
-        jwt.verify(token, JWT_SECRET, (err, decodedToken) => {
+        // Use process.env.JWT_SECRET here
+        jwt.verify(token, process.env.JWT_SECRET, (err, decodedToken) => {
             if (err) {
                 res.redirect('/login');
             } else {
@@ -18,4 +19,5 @@ const requireAuth = (req, res, next) => {
     }
 };
 
-module.exports = { requireAuth, JWT_SECRET };
+module.exports = { requireAuth }; 
+// Note: We don't export JWT_SECRET anymore because we can just use process.env everywhere
