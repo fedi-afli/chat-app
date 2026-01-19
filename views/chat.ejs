@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat Room</title>
+    <title>Home🏠❤️ | Chat Room</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="/socket.io/socket.io.js"></script>
 </head>
 <body class="bg-gray-200 h-screen flex flex-col">
 
     <header class="bg-indigo-600 text-white p-4 flex justify-between items-center shadow-md">
-        <h1 class="text-xl font-bold">💬 DevChat</h1>
+        <h1 class="text-xl font-bold">Home🏠❤️💬</h1>
         <div>
-            <span class="mr-4">Logged in as: <strong><%= username %></strong></span>
+            <span class="mr-4">Logged in as: <strong><%= user.username %></strong></span>
             <a href="/logout" class="bg-red-500 px-3 py-1 rounded hover:bg-red-600 text-sm">Logout</a>
         </div>
     </header>
@@ -20,6 +20,7 @@
     <div class="flex flex-1 overflow-hidden">
         <aside class="w-64 bg-white p-4 hidden md:block border-r overflow-y-auto">
             <h3 class="text-lg font-semibold text-gray-700 mb-4 border-b pb-2">👥 Active Users</h3>
+            <p class="text-xs text-gray-400 mb-2">(Click your name to change nickname)</p>
             <ul id="usersList" class="space-y-2 text-gray-600">
                 </ul>
         </aside>
@@ -44,86 +45,156 @@
         </main>
     </div>
 
-    <script>
-        const socket = io();
-        const chatForm = document.getElementById('chat-form');
-        const chatMessages = document.getElementById('chat-messages');
-        const userList = document.getElementById('usersList');
-        
-        // Get username from server-side render
-        const currentUsername = "<%= username %>";
+<script>
+    const socket = io();
+    const chatForm = document.getElementById('chat-form');
+    const chatMessages = document.getElementById('chat-messages');
+    const userList = document.getElementById('usersList');
+    
+    // 👇 Use 'user.username' and handle 'user.nickname' safely
+    const currentUsername = "<%= user.username %>";
+    let currentNickname = "<%= user.nickname || user.username %>"; 
 
-        // Join chatroom
-        socket.emit('joinRoom', { username: currentUsername });
+    // Join Room
+    socket.emit('joinRoom', { 
+        username: currentUsername, 
+        nickname: currentNickname 
+    });
 
-        // 👇👇👇 NEW PART: Listen for old messages 👇👇👇
-        socket.on('loadMessages', (history) => {
-            history.forEach(msg => {
-                outputMessage({
-                    username: msg.username,
-                    text: msg.text, // Text is already decrypted by the server
-                    type: 'chat'
-                });
-            });
-            // Scroll to the bottom immediately after loading
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+    // 1. Load History
+    socket.on('loadMessages', (history) => {
+        history.forEach(msg => {
+            outputMessage(msg);
         });
-        // 👆👆👆 END NEW PART 👆👆👆
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    });
 
-        // Get room users
-        socket.on('roomUsers', ({ users }) => {
-            outputUsers(users);
-        });
+    // 2. Handle Active Users List
+    socket.on('roomUsers', ({ users }) => {
+        outputUsers(users);
+    });
 
-        // Message from server
-        socket.on('message', (message) => {
-            outputMessage(message);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        });
-
-        // Message Submit
-        chatForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const msg = e.target.elements.msg.value;
-            // Emit message to server
-            socket.emit('chatMessage', msg);
-            // Clear input
-            e.target.elements.msg.value = '';
-            e.target.elements.msg.focus();
-        });
-
-        // Output message to DOM
-        function outputMessage(message) {
-            const div = document.createElement('div');
-            
-            if (message.type === 'system') {
-                // System Message (Joined/Left)
-                div.classList.add('flex', 'justify-center', 'my-2');
-                div.innerHTML = `<span class="bg-gray-300 text-gray-700 text-xs px-3 py-1 rounded-full">${message.text}</span>`;
-            } else {
-                // Chat Message
-                const isMyMessage = message.username === currentUsername;
-                
-                div.classList.add('flex', 'flex-col', isMyMessage ? 'items-end' : 'items-start');
-                
-                div.innerHTML = `
-                    <span class="text-xs text-gray-500 mb-1 ${isMyMessage ? 'mr-1' : 'ml-1'}">${message.username}</span>
-                    <div class="max-w-md px-4 py-2 rounded-lg shadow-sm ${isMyMessage ? 'bg-blue-500 text-white rounded-br-none' : 'bg-green-500 text-white rounded-bl-none'}">
-                        <p>${message.text}</p>
-                    </div>
-                `;
+    // 3. Handle Seen Status
+    socket.on('messagesSeen', ({ username }) => {
+        if (username === currentUsername) return;
+        const seenLabels = document.querySelectorAll('.seen-status');
+        seenLabels.forEach(label => {
+            if (label.dataset.sender === currentUsername) {
+                label.innerText = 'Seen';
+                label.style.display = 'block';
             }
-            chatMessages.appendChild(div);
-        }
+        });
+    });
 
-        // Add users to DOM
-        function outputUsers(users) {
-            userList.innerHTML = users.map(user => 
-                `<li class="flex items-center gap-2">
-                    <span class="w-2 h-2 bg-green-500 rounded-full"></span> ${user}
-                </li>`
-            ).join('');
+    socket.on('messageReadUpdate', ({ messageId, username }) => {
+        const messageDiv = document.getElementById(`msg-${messageId}`);
+        if (messageDiv) {
+            const seenLabel = messageDiv.querySelector('.seen-status');
+            if (seenLabel && seenLabel.dataset.sender === currentUsername && username !== currentUsername) {
+                seenLabel.innerText = 'Seen';
+                seenLabel.style.display = 'block';
+            }
         }
-    </script>
+    });
+
+    // 4. Receive Message
+    socket.on('message', (message) => {
+        outputMessage(message);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        
+        // Mark as read immediately if chat is open and it's not me
+        if (message.type === 'chat' && message.username !== currentUsername) {
+            socket.emit('markRead', { messageId: message._id });
+        }
+    });
+
+    // 5. NICKNAME UPDATE LISTENER
+    socket.on('nicknameUpdated', (newNick) => {
+        currentNickname = newNick; // Update local variable
+    });
+
+    // Send Message
+    chatForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const msg = e.target.elements.msg.value;
+        socket.emit('chatMessage', msg);
+        e.target.elements.msg.value = '';
+        e.target.elements.msg.focus();
+    });
+
+    // 👇 UPDATED: Accepts a target name and allows changing ANYONE
+    function requestNicknameChange(targetName) {
+        const newNick = prompt(`Change ${targetName}'s name to:`);
+        if (newNick && newNick.trim() !== "") {
+            // Emits the unrestricted event we created in server.js
+            socket.emit('forceChangeNickname', { 
+                targetName: targetName, 
+                newNick: newNick.trim() 
+            });
+        }
+    }
+
+    // Output Message to DOM
+    function outputMessage(message) {
+        const div = document.createElement('div');
+        if (message._id) div.id = `msg-${message._id}`; 
+
+        if (message.type === 'system') {
+            div.classList.add('flex', 'justify-center', 'my-2');
+            div.innerHTML = `<span class="bg-gray-300 text-gray-700 text-xs px-3 py-1 rounded-full">${message.text}</span>`;
+        } else {
+            const isMyMessage = message.username === currentUsername;
+            
+            const seenList = message.seenBy || [];
+            const isSeen = seenList.some(u => u !== currentUsername);
+
+            div.classList.add('flex', 'flex-col', isMyMessage ? 'items-end' : 'items-start');
+            
+            div.innerHTML = `
+                <span class="text-xs text-gray-500 mb-1 ${isMyMessage ? 'mr-1' : 'ml-1'}">
+                    ${message.nickname || message.username} 
+                </span>
+                <div class="max-w-md px-4 py-2 rounded-lg shadow-sm ${isMyMessage ? 'bg-blue-500 text-white rounded-br-none' : 'bg-green-500 text-white rounded-bl-none'}">
+                    <p>${message.text}</p>
+                </div>
+                ${isMyMessage ? 
+                    `<span class="text-[10px] text-gray-400 mt-1 seen-status" 
+                           data-sender="${message.username}" 
+                           style="${isSeen ? 'display:block' : 'display:none'}">
+                       Seen
+                    </span>` 
+                : ''}
+            `;
+        }
+        chatMessages.appendChild(div);
+    }
+
+    // 👇 UPDATED: Added onclick event to BOTH (You) and Others
+    function outputUsers(users) {
+        userList.innerHTML = users.map(userNick => {
+            if (userNick === currentNickname) {
+                // YOUR NAME (Clickable)
+                return `
+                    <li onclick="requestNicknameChange('${userNick}')" 
+                        class="flex items-center gap-2 p-2 rounded cursor-pointer bg-blue-50 hover:bg-blue-100 transition border border-blue-200"
+                        title="Click to change nickname">
+                        <span class="w-2 h-2 bg-green-500 rounded-full"></span> 
+                        <span class="font-bold text-blue-800">${userNick} (You)</span>
+                        <span class="text-xs text-blue-400">✏️</span>
+                    </li>`;
+            } else {
+                // OTHERS (Now Clickable too!)
+                return `
+                    <li onclick="requestNicknameChange('${userNick}')"
+                        class="flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-gray-100 transition"
+                        title="Click to rename this user">
+                        <span class="w-2 h-2 bg-green-500 rounded-full"></span> 
+                        <span>${userNick}</span>
+                        <span class="text-xs text-gray-400">✏️</span>
+                    </li>`;
+            }
+        }).join('');
+    }
+</script>
 </body>
 </html>

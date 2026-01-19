@@ -1,63 +1,68 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
-const { JWT_SECRET } = require('../middleware/authMiddleware');
 
-const createToken = (id, username) => {
-    
-    return jwt.sign({ id, username }, process.env.JWT_SECRET, { expiresIn: '1d' });
+// Handle errors
+const handleErrors = (err) => {
+    console.log(err.message, err.code);
+    let errors = { username: '', password: '' };
+
+    if (err.message === 'incorrect username') errors.username = 'That username is not registered';
+    if (err.message === 'incorrect password') errors.password = 'That password is incorrect';
+    if (err.code === 11000) errors.username = 'That username is already registered';
+    if (err.message.includes('user validation failed')) {
+        Object.values(err.errors).forEach(({ properties }) => {
+            errors[properties.path] = properties.message;
+        });
+    }
+    return errors;
+};
+
+const maxAge = 3 * 24 * 60 * 60;
+const createToken = (id) => {
+    return jwt.sign({ id }, 'net ninja secret', { expiresIn: maxAge });
+};
+
+module.exports.signup_get = (req, res) => {
+    res.render('signup');
+};
+
+module.exports.login_get = (req, res) => {
+    res.render('login');
 };
 
 module.exports.signup_post = async (req, res) => {
-    const { username, password } = req.body;
-    
-    console.log(`📝 Attempting to register: ${username}`); // Log the attempt
+    // 👇 FIX: Removed 'nickname' from here. 
+    // Your form only sends username/password.
+    const { username, password } = req.body; 
 
     try {
-        if (!username || !password) {
-            throw new Error('Username and password are required');
-        }
-
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
-        const user = await User.create({ username, password: hashedPassword });
+        // The Model will automatically set nickname = username
+        const user = await User.create({ username, password });
         
-        const token = createToken(user._id, user.username);
-        res.cookie('jwt', token, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
+        const token = createToken(user._id);
+        res.cookie('jwt', token, { httpOnly: true, maxAge: maxAge * 1000 });
         res.status(201).json({ user: user._id });
-        console.log("✅ User created successfully!");
-
     } catch (err) {
-        console.log("❌ Error:", err.message); // See this in your VS Code terminal
-
-        // Check for specific MongoDB Duplicate Key Error (Code 11000)
-        if (err.code === 11000) {
-            res.status(400).json({ error: 'That username is already taken. Please try another.' });
-        } else {
-            res.status(400).json({ error: err.message });
-        }
+        const errors = handleErrors(err);
+        res.status(400).json({ errors });
     }
 };
 
 module.exports.login_post = async (req, res) => {
     const { username, password } = req.body;
+
     try {
-        const user = await User.findOne({ username });
-        if (user) {
-            const auth = await bcrypt.compare(password, user.password);
-            if (auth) {
-                const token = createToken(user._id, user.username);
-                res.cookie('jwt', token, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
-                return res.status(200).json({ user: user._id });
-            }
-        }
-        throw Error('Invalid credentials');
+        const user = await User.login(username, password);
+        const token = createToken(user._id);
+        res.cookie('jwt', token, { httpOnly: true, maxAge: maxAge * 1000 });
+        res.status(200).json({ user: user._id });
     } catch (err) {
-        res.status(400).json({ error: 'Invalid username or password' });
+        const errors = handleErrors(err);
+        res.status(400).json({ errors });
     }
 };
 
 module.exports.logout_get = (req, res) => {
     res.cookie('jwt', '', { maxAge: 1 });
-    res.redirect('/login');
+    res.redirect('/');
 };
